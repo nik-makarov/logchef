@@ -9,17 +9,34 @@ The fork keeps two independent patches based on upstream v2.6.1
 | `fix/bounded-view-activity` | Explicit opt-in for bounded ClickHouse View activity |
 | `builds/custom` | Both patches and this fork's image pipeline |
 
-Issue drafts are in [upstream-issues](upstream-issues). Publish and discuss those
-with upstream before opening the two pull requests. The Dockerfile, workflow
+Issue drafts are in [upstream-issues](upstream-issues). The Explorer fix can be
+submitted independently; discuss the View activity opt-in with upstream before
+settling its public configuration. The Dockerfile, workflow, custom Just recipes
 and fork documentation belong only to `builds/custom`; omit them from upstream
-PRs. `main` continues to track upstream.
+PRs. `main` continues to track upstream. `builds/custom` keeps a linear history:
+the upstream base, the two patches, then fork-only build changes. Patch commits
+are replayed rather than adding merge commits.
+
+When upstream advances, update `main` from `upstream/main` and rebase
+`builds/custom` onto it. Replay any new patch commits from the two fix branches;
+already integrated patches do not need to be applied again. Run `just
+custom-check` before pushing the build branch. `just custom-frontend-check`
+checks the frontend inside a Debian/Node validation stage without host tools.
+A local validation build is available as `just custom-image-build`; it never
+publishes an image.
+
+The build branch also carries patch updates to `andybalholm/brotli` (1.2.7)
+and `klauspost/compress` (1.20.2), fixing GO-2026-6888 and GO-2026-6865 reported
+by the publication gate. These dependency updates stay out of the two fix PRs.
 
 ## Publication
 
 `.github/workflows/custom-image.yml` runs on pushes to `builds/custom` in
-`nik-makarov/logchef`. It requires native unit/race tests, vet, pinned lint and
-sqlc checks before image publication. Native Ubuntu amd64/arm64 jobs build
-`Dockerfile.custom`; a final job publishes the combined OCI manifest to:
+`nik-makarov/logchef`. It requires native unit/race tests, formatting, vet, pinned
+lint, reachable-vulnerability and sqlc checks, plus frontend type checks, tests
+and bundle checks before image publication. Native Ubuntu amd64/arm64 jobs build
+`Dockerfile.custom` and smoke-test the published architecture images. Only after
+both succeed does a final job publish the combined OCI manifest to:
 
 ```text
 ghcr.io/nik-makarov/logchef:sha-<full-commit>-<run-number>-<run-attempt>

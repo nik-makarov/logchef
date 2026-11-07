@@ -7,6 +7,15 @@ COPY frontend/ ./frontend/
 COPY cmd/server/ui/ ./cmd/server/ui/
 RUN cd frontend && bun run build
 
+# Vue's TypeScript bridge uses Node's native-addon API. Keep validation on Node,
+# matching the Actions runner, while Bun remains the package manager and builder.
+FROM node:24-bookworm-slim AS frontend-check
+WORKDIR /app/frontend
+RUN --mount=type=bind,from=frontend,source=/app,target=/app,rw \
+    node node_modules/vue-tsc/bin/vue-tsc.js -b \
+    && node node_modules/vitest/vitest.mjs run --coverage \
+    && node scripts/check-editor-bundle.mjs ../cmd/server/ui
+
 FROM golang:1.27.3-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./

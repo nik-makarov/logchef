@@ -309,6 +309,18 @@ tidy:
 # Run all checks
 check: fmt vet lint sqlc-generate test
 
+# Validate the fork-only workflow in addition to the backend checks.
+custom-check: check
+    actionlint .github/workflows/custom-image.yml
+
+# Build locally for validation; publication is exclusively through GitHub Actions.
+custom-image-build tag="logchef-custom:local":
+    docker build -f Dockerfile.custom --build-arg APP_VERSION=dev -t {{tag}} .
+
+# Check the frontend with Node, matching CI, without host tool installation.
+custom-frontend-check:
+    docker build -f Dockerfile.custom --target frontend-check -t logchef-custom-frontend-check:local .
+
 # === Docker ===
 docker-image := "mr-karan/logchef"
 docker-tag := version # Use the simple git describe output for the tag
