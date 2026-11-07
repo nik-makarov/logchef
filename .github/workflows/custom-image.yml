@@ -1,14 +1,14 @@
-name: Homelab image
+name: Custom image
 
 on:
   push:
-    branches: [builds/homelab]
+    branches: [builds/custom]
 
 permissions:
   contents: read
 
 concurrency:
-  group: homelab-image
+  group: custom-image
   cancel-in-progress: true
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
           echo "tag=sha-${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
-          echo "version=homelab.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "version=custom.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
       # The docker driver uses BuildKit embedded in the Ubuntu host's Docker
       # Engine. Do not replace it with docker-container's default Alpine image.
       - uses: docker/setup-buildx-action@v4
@@ -77,7 +77,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.homelab
+          file: Dockerfile.custom
           platforms: linux/${{ matrix.arch }}
           push: true
           # Docker's bundled driver has no external cache/attestation exporter
@@ -113,12 +113,12 @@ jobs:
           tag="sha-${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
           docker buildx imagetools create \
             --tag "$image:$tag" \
-            --tag "$image:homelab" \
+            --tag "$image:custom" \
             "$image:$tag-amd64" "$image:$tag-arm64"
           docker buildx imagetools inspect "$image:$tag"
           {
             echo '### Published Logchef image'
             echo "Image: \`$image:$tag\`"
             echo 'Platforms: linux/amd64, linux/arm64'
-            echo 'Use the manifest digest above for deployment; homelab is a moving tag.'
+            echo 'Use the manifest digest above for deployment; custom is a moving tag.'
           } >> "$GITHUB_STEP_SUMMARY"

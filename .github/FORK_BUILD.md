@@ -7,26 +7,26 @@ The fork keeps two independent patches based on upstream v2.6.1
 | --- | --- |
 | `fix/explorer-request-headers` | Bounded 64 KiB HTTP parser buffer for Explorer URL/Referer 431 failures |
 | `fix/bounded-view-activity` | Explicit opt-in for bounded ClickHouse View activity |
-| `builds/homelab` | Both patches and this fork's image pipeline |
+| `builds/custom` | Both patches and this fork's image pipeline |
 
 Issue drafts are in [upstream-issues](upstream-issues). Publish and discuss those
 with upstream before opening the two pull requests. The Dockerfile, workflow
-and fork documentation belong only to `builds/homelab`; omit them from upstream
+and fork documentation belong only to `builds/custom`; omit them from upstream
 PRs. `main` continues to track upstream.
 
 ## Publication
 
-`.github/workflows/homelab-image.yml` runs on pushes to `builds/homelab` in
+`.github/workflows/custom-image.yml` runs on pushes to `builds/custom` in
 `nik-makarov/logchef`. It requires native unit/race tests, vet, pinned lint and
 sqlc checks before image publication. Native Ubuntu amd64/arm64 jobs build
-`Dockerfile.homelab`; a final job publishes the combined OCI manifest to:
+`Dockerfile.custom`; a final job publishes the combined OCI manifest to:
 
 ```text
 ghcr.io/nik-makarov/logchef:sha-<full-commit>-<run-number>-<run-attempt>
-ghcr.io/nik-makarov/logchef:homelab
+ghcr.io/nik-makarov/logchef:custom
 ```
 
-The first tag identifies a single CI run. `homelab` moves after both architecture
+The first tag identifies a single CI run. `custom` moves after both architecture
 builds succeed. Each architecture also has a run-specific `-amd64` or `-arm64`
 tag. The job summary reports the reference; the manifest inspection reports its
 digest. Use the manifest digest in deployment manifests for reproducibility.
