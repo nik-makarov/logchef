@@ -72,10 +72,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     ./cmd/server
 
 # Use a minimal base image for the final stage
-FROM alpine:3.24.2
+FROM alpine:3.24.4
 
-# Install CA certificates and timezone data
-RUN apk --no-cache add ca-certificates tzdata
+# Require the zlib fix for CVE-2026-4738.
+RUN apk --no-cache add ca-certificates tzdata 'zlib>=1.4-r0'
 
 WORKDIR /app
 

@@ -1,7 +1,7 @@
-FROM alpine:3.24.2
+FROM alpine:3.24.4
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+# Require the zlib fix for CVE-2026-4738.
+RUN apk --no-cache add ca-certificates tzdata 'zlib>=1.4-r0'
 
 # Create non-root user and prepare directories
 RUN adduser -D -u 1000 logchef && \
