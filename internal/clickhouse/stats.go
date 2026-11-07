@@ -183,7 +183,7 @@ func (c *Client) IngestionStats(ctx context.Context, database, table, timestampF
 	}
 	queryCtx, cancel := context.WithTimeout(ctx, ingestionStatsTimeoutSeconds*time.Second)
 	defer cancel()
-	queryCtx = clickhouse.Context(queryCtx, clickhouse.WithSettings(buildQuerySettings(ingestionStatsTimeoutSeconds, clickhouse.Settings{"max_threads": 2}, c.querySettings)))
+	queryCtx = clickhouse.Context(queryCtx, clickhouse.WithSettings(ingestionActivitySettings(c.querySettings)))
 	rows, err := c.conn.Query(queryCtx, query)
 	if err != nil {
 		return nil, activityError(queryCtx, "error executing ingestion activity query", err)
@@ -201,4 +201,15 @@ func (c *Client) IngestionStats(ctx context.Context, database, table, timestampF
 		return nil, activityError(queryCtx, "iterate ingestion activity rows", err)
 	}
 	return accumulateIngestionActivity(resultRows), nil
+}
+
+// Activity budgets cannot be relaxed by per-source connection settings.
+func ingestionActivitySettings(source clickhouse.Settings) clickhouse.Settings {
+	settings := buildQuerySettings(ingestionStatsTimeoutSeconds, nil, source)
+	settings["max_execution_time"] = ingestionStatsTimeoutSeconds
+	settings["max_threads"] = 2
+	settings["max_rows_to_read"] = 10000000
+	settings["max_bytes_to_read"] = 2147483648
+	settings["read_overflow_mode"] = "throw"
+	return settings
 }

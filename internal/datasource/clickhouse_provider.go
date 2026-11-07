@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -583,7 +584,7 @@ func (p *ClickHouseProvider) InspectSourceActivity(ctx context.Context, source *
 	if err != nil {
 		return nil, fmt.Errorf("inspect activity table metadata: %w", err)
 	}
-	if !hasLeadingTimestampSortKey(info, source.MetaTSField) {
+	if !hasLeadingTimestampSortKey(info, source.MetaTSField) && !allowsBoundedViewActivity(source, info) {
 		return nil, ErrSourceActivityUnavailable
 	}
 	database, table := getStatsTableLocation(source, info)
@@ -1063,4 +1064,20 @@ func (p *ClickHouseProvider) CompileLogchefQL(_ context.Context, source *models.
 	}
 
 	return compiled, nil
+}
+
+// allowsBoundedViewActivity is an explicit deployment opt-in. Ordinary sources
+// retain the upstream leading-sort-key safeguard. IngestionStats enforces its
+// normal 24h window, deadline and scan limits for these views as well.
+func allowsBoundedViewActivity(source *models.Source, info *clickhouse.TableInfo) bool {
+	if source == nil || info == nil || info.Engine != "View" || strings.TrimSpace(source.MetaTSField) == "" {
+		return false
+	}
+	name := source.Connection.Database + "." + source.Connection.TableName
+	for allowed := range strings.SplitSeq(os.Getenv("LOGCHEF_BOUNDED_ACTIVITY_VIEWS"), ",") {
+		if strings.TrimSpace(allowed) == name {
+			return true
+		}
+	}
+	return false
 }
