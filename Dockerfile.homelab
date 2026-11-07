@@ -1,0 +1,33 @@
+# Fork-only image. The upstream Dockerfiles and release workflow stay intact.
+FROM oven/bun:1.4.2-debian AS frontend
+WORKDIR /app
+COPY frontend/package.json frontend/bun.lock ./frontend/
+RUN cd frontend && bun install --frozen-lockfile
+COPY frontend/ ./frontend/
+COPY cmd/server/ui/ ./cmd/server/ui/
+RUN cd frontend && bun run build
+
+FROM golang:1.27.3-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+COPY --from=frontend /app/cmd/server/ui ./cmd/server/ui
+ARG APP_VERSION=dev
+ARG TARGETOS=linux
+ARG TARGETARCH
+# sqlc outputs are committed and verified by the test job before publication.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
+    -ldflags="-s -w -X main.buildString=${APP_VERSION} -X main.versionString=${APP_VERSION}" \
+    -o /out/logchef ./cmd/server \
+    && install -d -o 65532 -g 65532 /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+COPY --from=build /out/logchef /opt/logchef/logchef
+COPY --from=build --chown=65532:65532 /out/data /data
+COPY config.toml /etc/logchef/config.toml
+WORKDIR /data
+USER 65532:65532
+EXPOSE 8125
+ENTRYPOINT ["/opt/logchef/logchef"]
+CMD ["-config", "/etc/logchef/config.toml"]

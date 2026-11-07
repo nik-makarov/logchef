@@ -1,0 +1,124 @@
+name: Homelab image
+
+on:
+  push:
+    branches: [builds/homelab]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homelab-image
+  cancel-in-progress: true
+
+jobs:
+  test:
+    if: github.repository == 'nik-makarov/logchef'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet and native unit tests
+        run: |
+          go vet ./...
+          go test -race -shuffle=on -gcflags='modernc.org/...=-d=checkptr=0' -timeout 20m ./...
+      - name: Check generated SQL
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          sqlc generate
+          git diff --exit-code
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+
+  build:
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: CI image metadata
+        id: image
+        shell: bash
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "version=homelab.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+      # The docker driver uses BuildKit embedded in the Ubuntu host's Docker
+      # Engine. Do not replace it with docker-container's default Alpine image.
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish native architecture
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.homelab
+          platforms: linux/${{ matrix.arch }}
+          push: true
+          # Docker's bundled driver has no external cache/attestation exporter
+          # on runners using the classic image store.
+          provenance: false
+          sbom: false
+          build-args: APP_VERSION=${{ steps.image.outputs.version }}
+          tags: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.tag }}-${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.image.outputs.version }}
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish multi-architecture manifest
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tag="sha-${GITHUB_SHA}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          docker buildx imagetools create \
+            --tag "$image:$tag" \
+            --tag "$image:homelab" \
+            "$image:$tag-amd64" "$image:$tag-arm64"
+          docker buildx imagetools inspect "$image:$tag"
+          {
+            echo '### Published Logchef image'
+            echo "Image: \`$image:$tag\`"
+            echo 'Platforms: linux/amd64, linux/arm64'
+            echo 'Use the manifest digest above for deployment; homelab is a moving tag.'
+          } >> "$GITHUB_STEP_SUMMARY"
